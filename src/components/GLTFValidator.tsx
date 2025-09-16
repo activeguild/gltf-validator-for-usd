@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import * as THREE from 'three';
+import GLTFViewer from './GLTFViewer';
+import ValidationModal from './ValidationModal';
 
 interface ValidationResult {
   type: 'warning' | 'error' | 'info';
@@ -16,6 +18,8 @@ interface GLTFValidatorProps {
 export default function GLTFValidator({ onValidationComplete }: GLTFValidatorProps) {
   const [isValidating, setIsValidating] = useState(false);
   const [results, setResults] = useState<ValidationResult[]>([]);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const validateGLTF = async (file: File) => {
     setIsValidating(true);
@@ -85,8 +89,8 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         if (src.includes('.jpg') || src.includes('.jpeg') || src.includes('.png')) {
           results.push({
             type: 'warning',
-            message: 'テクスチャ形式の最適化推奨',
-            details: `JPEG/PNGテクスチャをWebP形式に変換することで、ファイルサイズを削減できます。`
+            message: 'Texture format optimization recommended',
+            details: `Converting JPEG/PNG textures to WebP format can reduce file size significantly.`
           });
         }
       }
@@ -109,14 +113,14 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
     if (totalPolygons > 50000) {
       results.push({
         type: 'warning',
-        message: 'ポリゴン数が多すぎます',
-        details: `現在のポリゴン数: ${Math.round(totalPolygons).toLocaleString()}。パフォーマンス向上のため50,000以下に削減することを推奨します。`
+        message: 'Polygon count too high',
+        details: `Current polygon count: ${Math.round(totalPolygons).toLocaleString()}. Recommend reducing to under 50,000 for better performance.`
       });
     } else {
       results.push({
         type: 'info',
-        message: 'ポリゴン数チェック',
-        details: `総ポリゴン数: ${Math.round(totalPolygons).toLocaleString()}`
+        message: 'Polygon count check',
+        details: `Total polygons: ${Math.round(totalPolygons).toLocaleString()}`
       });
     }
   };
@@ -126,8 +130,8 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
       if (child.scale.x < 0 || child.scale.y < 0 || child.scale.z < 0) {
         results.push({
           type: 'warning',
-          message: 'Scaleにマイナス値が設定されています',
-          details: `オブジェクト "${child.name || '名前なし'}" のScaleにマイナス値があります。オブジェクトが崩れる可能性があります。`
+          message: 'Negative scale values detected',
+          details: `Object "${child.name || 'Unnamed'}" has negative scale values. This may cause object distortion.`
         });
       }
     });
@@ -147,8 +151,8 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
             if (x < 0 || y < 0 || z < 0) {
               results.push({
                 type: 'warning',
-                message: '法線にマイナス値が検出されました',
-                details: `メッシュ "${child.name || '名前なし'}" の法線にマイナス値があります。レンダリングに問題が発生する可能性があります。`
+                message: 'Negative normal values detected',
+                details: `Mesh "${child.name || 'Unnamed'}" has negative normal values. This may cause rendering issues.`
               });
               break;
             }
@@ -168,8 +172,8 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
             if (startScale === 0) {
               results.push({
                 type: 'warning',
-                message: 'Scaleアニメーションの開始値が0です',
-                details: `アニメーション "${clip.name}" でScaleの開始値が0に設定されています。オブジェクトが崩れる可能性があります。`
+                message: 'Scale animation starts with zero value',
+                details: `Animation "${clip.name}" has scale starting value set to 0. This may cause object distortion.`
               });
             }
           }
@@ -194,8 +198,8 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         if (depth > 5) {
           results.push({
             type: 'warning',
-            message: '深い階層のメッシュ',
-            details: `メッシュ "${child.name || '名前なし'}" は深い階層（${depth}レベル）にあります。パフォーマンスに影響する可能性があります。`
+            message: 'Deep mesh hierarchy detected',
+            details: `Mesh "${child.name || 'Unnamed'}" is in deep hierarchy (${depth} levels). This may impact performance.`
           });
         }
       }
@@ -206,32 +210,142 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
     const file = event.target.files?.[0];
     if (file) {
       if (file.name.toLowerCase().endsWith('.gltf') || file.name.toLowerCase().endsWith('.glb')) {
+        setUploadedFile(file);
         validateGLTF(file);
       } else {
+        setUploadedFile(null);
         setResults([{
           type: 'error',
-          message: 'サポートされていないファイル形式です',
-          details: 'GLTF（.gltf）またはGLB（.glb）ファイルをアップロードしてください。'
+          message: 'Unsupported file format',
+          details: 'Please upload a GLTF (.gltf) or GLB (.glb) file.'
         }]);
       }
     }
   };
 
+  const hasErrors = results.some(r => r.type === 'error');
+  const hasWarnings = results.some(r => r.type === 'warning');
+  const hasIssues = hasErrors || hasWarnings;
+
+  const getStatusIcon = () => {
+    if (hasErrors) {
+      return (
+        <div className="flex items-center space-x-2 text-red-600">
+          <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+          </svg>
+          <span className="font-medium">Errors Found</span>
+        </div>
+      );
+    } else if (hasWarnings) {
+      return (
+        <div className="flex items-center space-x-2 text-yellow-600">
+          <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          <span className="font-medium">Warnings Found</span>
+        </div>
+      );
+    } else if (results.length > 0) {
+      return (
+        <div className="flex items-center space-x-2 text-green-600">
+          <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+          </svg>
+          <span className="font-medium">No Issues</span>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
-    <div className="w-full max-w-4xl mx-auto p-6">
-      <div className="bg-white rounded-lg shadow-lg p-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">
-          GLTF Validator for USD
-        </h1>
-        
-        <div className="mb-8">
-          <label htmlFor="file-upload" className="block text-sm font-medium text-gray-700 mb-4">
-            GLTF/GLBファイルをアップロード
-          </label>
-          <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:border-blue-400 transition-colors">
-            <div className="space-y-1 text-center">
+    <div className="h-screen overflow-hidden bg-gray-100">
+      {/* Header */}
+      <div className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              GLTF Validator for USD
+            </h1>
+            {uploadedFile && (
+              <p className="text-sm text-gray-600 mt-1">
+                {uploadedFile.name}
+              </p>
+            )}
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            {/* Upload Button */}
+            <label
+              htmlFor="file-upload"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer"
+            >
+              <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              Choose File
+              <input
+                id="file-upload"
+                name="file-upload"
+                type="file"
+                className="sr-only"
+                accept=".gltf,.glb"
+                onChange={handleFileUpload}
+                disabled={isValidating}
+              />
+            </label>
+            
+            {/* Status and Results Button */}
+            {uploadedFile && !isValidating && (
+              <div className="flex items-center space-x-3">
+                {getStatusIcon()}
+                {hasIssues && (
+                  <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    View Details
+                  </button>
+                )}
+              </div>
+            )}
+            
+            {/* Loading */}
+            {isValidating && (
+              <div className="flex items-center space-x-2 text-blue-600">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                <span className="text-sm font-medium">Analyzing...</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="h-full">
+        {uploadedFile ? (
+          // Full screen 3D Viewer
+          <div className="h-full">
+            <GLTFViewer file={uploadedFile} className="w-full h-full" />
+            
+            {/* Floating Controls Info */}
+            <div className="absolute bottom-4 left-4 bg-black bg-opacity-75 text-white text-xs rounded-lg p-3 max-w-xs">
+              <div className="font-medium mb-2">🎮 操作方法</div>
+              <div className="space-y-1">
+                <div><strong>🔄 回転:</strong> 左クリック＋ドラッグ</div>
+                <div><strong>🔍 ズーム:</strong> マウスホイール</div>
+                <div><strong>📱 移動:</strong> 右クリック＋ドラッグ</div>
+                <div><strong>📏 距離:</strong> 中ボタン＋ドラッグ</div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          // Upload Area
+          <div className="h-full flex items-center justify-center p-8">
+            <div className="text-center">
               <svg
-                className="mx-auto h-12 w-12 text-gray-400"
+                className="mx-auto h-24 w-24 text-gray-400 mb-6"
                 stroke="currentColor"
                 fill="none"
                 viewBox="0 0 48 48"
@@ -244,114 +358,44 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
                   strokeLinejoin="round"
                 />
               </svg>
-              <div className="flex text-sm text-gray-600">
-                <label
-                  htmlFor="file-upload"
-                  className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500"
-                >
-                  <span>ファイルを選択</span>
-                  <input
-                    id="file-upload"
-                    name="file-upload"
-                    type="file"
-                    className="sr-only"
-                    accept=".gltf,.glb"
-                    onChange={handleFileUpload}
-                    disabled={isValidating}
-                  />
-                </label>
-                <p className="pl-1">またはドラッグ&ドロップ</p>
-              </div>
-              <p className="text-xs text-gray-500">GLTF, GLB形式のファイル</p>
-            </div>
-          </div>
-        </div>
-
-        {isValidating && (
-          <div className="mb-8">
-            <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <span className="ml-2 text-gray-600">バリデーション中...</span>
-            </div>
-          </div>
-        )}
-
-        {results.length > 0 && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              バリデーション結果
-            </h2>
-            {results.map((result, index) => (
-              <div
-                key={index}
-                className={`p-4 rounded-md border-l-4 ${
-                  result.type === 'error'
-                    ? 'bg-red-50 border-red-400'
-                    : result.type === 'warning'
-                    ? 'bg-yellow-50 border-yellow-400'
-                    : 'bg-blue-50 border-blue-400'
-                }`}
+              <h2 className="text-2xl font-medium text-gray-900 mb-4">
+                GLTF/GLBファイルをアップロード
+              </h2>
+              <p className="text-gray-600 mb-8">
+                ファイルを選択してUSD環境向けの品質チェックを開始
+              </p>
+              <label
+                htmlFor="file-upload-main"
+                className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer"
               >
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    {result.type === 'error' ? (
-                      <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path
-                          fillRule="evenodd"
-                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    ) : result.type === 'warning' ? (
-                      <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path
-                          fillRule="evenodd"
-                          d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    ) : (
-                      <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path
-                          fillRule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    )}
-                  </div>
-                  <div className="ml-3">
-                    <h3
-                      className={`text-sm font-medium ${
-                        result.type === 'error'
-                          ? 'text-red-800'
-                          : result.type === 'warning'
-                          ? 'text-yellow-800'
-                          : 'text-blue-800'
-                      }`}
-                    >
-                      {result.message}
-                    </h3>
-                    {result.details && (
-                      <div
-                        className={`mt-2 text-sm ${
-                          result.type === 'error'
-                            ? 'text-red-700'
-                            : result.type === 'warning'
-                            ? 'text-yellow-700'
-                            : 'text-blue-700'
-                        }`}
-                      >
-                        {result.details}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
+                <svg className="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                ファイルを選択
+                <input
+                  id="file-upload-main"
+                  name="file-upload-main"
+                  type="file"
+                  className="sr-only"
+                  accept=".gltf,.glb"
+                  onChange={handleFileUpload}
+                  disabled={isValidating}
+                />
+              </label>
+              <p className="text-xs text-gray-500 mt-4">
+                対応形式: .gltf, .glb
+              </p>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Validation Modal */}
+      <ValidationModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        results={results}
+      />
     </div>
   );
 }
