@@ -49,7 +49,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
       }, (error) => {
         validationResults.push({
           type: 'error',
-          message: 'GLTFファイルの読み込みに失敗しました',
+          message: 'Failed to load GLTF file',
           details: error.toString()
         });
         setResults(validationResults);
@@ -58,7 +58,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
     } catch (error) {
       validationResults.push({
         type: 'error',
-        message: 'ファイルの処理中にエラーが発生しました',
+        message: 'Error occurred while processing file',
         details: error instanceof Error ? error.message : String(error)
       });
       setResults(validationResults);
@@ -331,12 +331,12 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
             
             {/* Floating Controls Info */}
             <div className="absolute bottom-4 left-4 bg-black bg-opacity-75 text-white text-xs rounded-lg p-3 max-w-xs">
-              <div className="font-medium mb-2">🎮 操作方法</div>
+              <div className="font-medium mb-2">🎮 Controls</div>
               <div className="space-y-1">
-                <div><strong>🔄 回転:</strong> 左クリック＋ドラッグ</div>
-                <div><strong>🔍 ズーム:</strong> マウスホイール</div>
-                <div><strong>📱 移動:</strong> 右クリック＋ドラッグ</div>
-                <div><strong>📏 距離:</strong> 中ボタン＋ドラッグ</div>
+                <div><strong>🔄 Rotate:</strong> Left Click + Drag</div>
+                <div><strong>🔍 Zoom:</strong> Mouse Wheel</div>
+                <div><strong>📱 Pan:</strong> Right Click + Drag</div>
+                <div><strong>📏 Dolly:</strong> Middle Click + Drag</div>
               </div>
             </div>
           </div>
@@ -359,10 +359,10 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
                 />
               </svg>
               <h2 className="text-2xl font-medium text-gray-900 mb-4">
-                GLTF/GLBファイルをアップロード
+                Upload GLTF/GLB File
               </h2>
               <p className="text-gray-600 mb-8">
-                ファイルを選択してUSD環境向けの品質チェックを開始
+                Select a file to start quality checks for USD environments
               </p>
               <label
                 htmlFor="file-upload-main"
@@ -371,7 +371,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
                 <svg className="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-                ファイルを選択
+                Choose File
                 <input
                   id="file-upload-main"
                   name="file-upload-main"
@@ -383,7 +383,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
                 />
               </label>
               <p className="text-xs text-gray-500 mt-4">
-                対応形式: .gltf, .glb
+                Supported formats: .gltf, .glb
               </p>
             </div>
           </div>

@@ -167,10 +167,11 @@ export default function GLTFViewer({ file, className = '' }: GLTFViewerProps) {
   }, [isClient]);
 
   useEffect(() => {
-    if (!file || !sceneRef.current) return;
+    if (!file || !sceneRef.current || !isClient) return;
 
     const loadGLTF = async () => {
       try {
+        console.log('Loading GLTF file:', file.name);
         const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
         const loader = new GLTFLoader();
         const arrayBuffer = await file.arrayBuffer();
@@ -187,13 +188,36 @@ export default function GLTFViewer({ file, className = '' }: GLTFViewerProps) {
         });
 
         loader.parse(arrayBuffer, '', (gltf) => {
+          console.log('GLTF parsed successfully:', gltf);
           const model = gltf.scene;
+          
+          if (!model || model.children.length === 0) {
+            console.warn('GLTF model is empty or has no children');
+            return;
+          }
           
           // Center and scale the model
           const box = new THREE.Box3().setFromObject(model);
+          
+          if (box.isEmpty()) {
+            console.warn('Model bounding box is empty');
+            // Create a fallback cube if model has no geometry
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.MeshStandardMaterial({ color: 0x888888 });
+            const fallbackMesh = new THREE.Mesh(geometry, material);
+            sceneRef.current!.add(fallbackMesh);
+            return;
+          }
+          
           const center = box.getCenter(new THREE.Vector3());
           const size = box.getSize(new THREE.Vector3());
           const maxDim = Math.max(size.x, size.y, size.z);
+          
+          if (maxDim === 0) {
+            console.warn('Model has zero dimensions');
+            return;
+          }
+          
           const scale = 3 / maxDim; // Scale to fit in a 3x3x3 box
           
           model.scale.setScalar(scale);
@@ -208,13 +232,19 @@ export default function GLTFViewer({ file, className = '' }: GLTFViewerProps) {
           });
           
           sceneRef.current!.add(model);
+          console.log('Model added to scene');
 
           // Adjust camera to view the model
           if (cameraRef.current && controlsRef.current) {
-            const distance = maxDim * 1.5;
+            const distance = Math.max(maxDim * 1.5, 5);
             cameraRef.current.position.set(distance, distance * 0.8, distance);
             controlsRef.current.target.set(0, 0, 0);
             controlsRef.current.update();
+            
+            // Force a render
+            if (rendererRef.current && sceneRef.current) {
+              rendererRef.current.render(sceneRef.current, cameraRef.current);
+            }
           }
 
           // Handle animations
@@ -250,6 +280,25 @@ export default function GLTFViewer({ file, className = '' }: GLTFViewerProps) {
           }
         }, (error) => {
           console.error('Error loading GLTF:', error);
+          
+          // Create a fallback object to indicate loading failure
+          const geometry = new THREE.BoxGeometry(1, 1, 1);
+          const material = new THREE.MeshStandardMaterial({ 
+            color: 0xff0000, 
+            transparent: true, 
+            opacity: 0.5 
+          });
+          const errorMesh = new THREE.Mesh(geometry, material);
+          errorMesh.position.set(0, 0, 0);
+          
+          if (sceneRef.current) {
+            sceneRef.current.add(errorMesh);
+            
+            // Force a render
+            if (rendererRef.current && cameraRef.current) {
+              rendererRef.current.render(sceneRef.current, cameraRef.current);
+            }
+          }
         });
       } catch (error) {
         console.error('Error processing file:', error);
@@ -257,7 +306,7 @@ export default function GLTFViewer({ file, className = '' }: GLTFViewerProps) {
     };
 
     loadGLTF();
-  }, [file]);
+  }, [file, isClient]);
 
   return (
     <div className={`relative bg-gray-100 rounded-lg overflow-hidden border-2 border-gray-200 ${className}`}>
@@ -281,9 +330,9 @@ export default function GLTFViewer({ file, className = '' }: GLTFViewerProps) {
                 d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
               />
             </svg>
-            <p className="text-lg font-medium">3D ビューアー</p>
-            <p className="text-sm text-gray-400 mt-2">GLTFファイルをアップロードして3Dモデルを表示</p>
-            <p className="text-xs text-gray-400 mt-1">マウス操作で回転・ズーム・移動が可能</p>
+            <p className="text-lg font-medium">3D Viewer</p>
+            <p className="text-sm text-gray-400 mt-2">Upload GLTF file to display 3D model</p>
+            <p className="text-xs text-gray-400 mt-1">Mouse controls for rotation, zoom, and panning</p>
           </div>
         </div>
       )}
