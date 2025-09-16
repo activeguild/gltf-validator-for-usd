@@ -46,6 +46,12 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         setResults(validationResults);
         onValidationComplete?.(validationResults);
         setIsValidating(false);
+        
+        // Auto-open modal if there are errors or warnings
+        const hasIssues = validationResults.some(r => r.type === 'error' || r.type === 'warning');
+        if (hasIssues) {
+          setIsModalOpen(true);
+        }
       }, (error) => {
         validationResults.push({
           type: 'error',
@@ -54,6 +60,9 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         });
         setResults(validationResults);
         setIsValidating(false);
+        
+        // Auto-open modal for errors
+        setIsModalOpen(true);
       });
     } catch (error) {
       validationResults.push({
@@ -63,6 +72,9 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
       });
       setResults(validationResults);
       setIsValidating(false);
+      
+      // Auto-open modal for errors
+      setIsModalOpen(true);
     }
   };
 
@@ -143,20 +155,43 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         const normals = child.geometry.attributes.normal;
         if (normals) {
           const normalArray = normals.array;
+          let hasInvalidNormals = false;
+          let invalidCount = 0;
+          
           for (let i = 0; i < normalArray.length; i += 3) {
             const x = normalArray[i];
             const y = normalArray[i + 1];
             const z = normalArray[i + 2];
             
-            if (x < 0 || y < 0 || z < 0) {
-              results.push({
-                type: 'warning',
-                message: 'Negative normal values detected',
-                details: `Mesh "${child.name || 'Unnamed'}" has negative normal values. This may cause rendering issues.`
-              });
-              break;
+            // Check for invalid normals (NaN, Infinity, or zero-length vectors)
+            if (isNaN(x) || isNaN(y) || isNaN(z) || 
+                !isFinite(x) || !isFinite(y) || !isFinite(z)) {
+              hasInvalidNormals = true;
+              invalidCount++;
+            } else {
+              // Check if normal vector has zero length (which would be invalid)
+              const length = Math.sqrt(x * x + y * y + z * z);
+              if (length < 0.0001) { // Very small threshold for zero-length
+                hasInvalidNormals = true;
+                invalidCount++;
+              }
             }
           }
+          
+          if (hasInvalidNormals) {
+            results.push({
+              type: 'warning',
+              message: 'Invalid normal vectors detected',
+              details: `Mesh "${child.name || 'Unnamed'}" has ${invalidCount} invalid normal vectors (NaN, infinite, or zero-length). This may cause rendering issues.`
+            });
+          }
+        } else {
+          // Missing normals might be an issue for some USD workflows
+          results.push({
+            type: 'info',
+            message: 'Missing normal vectors',
+            details: `Mesh "${child.name || 'Unnamed'}" does not have normal vectors. Consider adding them for better USD compatibility.`
+          });
         }
       }
     });
@@ -219,6 +254,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
           message: 'Unsupported file format',
           details: 'Please upload a GLTF (.gltf) or GLB (.glb) file.'
         }]);
+        setIsModalOpen(true);
       }
     }
   };
