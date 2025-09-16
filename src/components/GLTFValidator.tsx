@@ -158,6 +158,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         if (normals) {
           const normalArray = normals.array;
           let hasInvalidNormals = false;
+          let hasNegativeNormals = false;
           let invalidCount = 0;
           
           for (let i = 0; i < normalArray.length; i += 3) {
@@ -177,6 +178,11 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
                 hasInvalidNormals = true;
                 invalidCount++;
               }
+              
+              // Check for negative values in normal components (problematic for USDZ conversion)
+              if (x < 0 || y < 0 || z < 0) {
+                hasNegativeNormals = true;
+              }
             }
           }
           
@@ -185,6 +191,14 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
               type: 'warning',
               message: 'Invalid normal vectors detected',
               details: `Mesh "${child.name || 'Unnamed'}" has ${invalidCount} invalid normal vectors (NaN, infinite, or zero-length). This may cause rendering issues.`
+            });
+          }
+          
+          if (hasNegativeNormals) {
+            results.push({
+              type: 'warning',
+              message: 'Negative normal vector components detected',
+              details: `Mesh "${child.name || 'Unnamed'}" has normal vectors with negative components.`
             });
           }
         } else {
