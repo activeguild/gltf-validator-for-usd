@@ -42,6 +42,8 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         validateNormals(scene, validationResults);
         validateAnimations(animations, scene, validationResults);
         validateMeshHierarchy(scene, validationResults);
+        validateObjectNames(scene, validationResults);
+        validateUniqueIds(gltf, validationResults);
 
         setResults(validationResults);
         onValidationComplete?.(validationResults);
@@ -239,6 +241,106 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         }
       }
     });
+  };
+
+  const validateObjectNames = (scene: THREE.Object3D, results: ValidationResult[]) => {
+    // Regex to detect non-ASCII characters (anything that's not alphanumeric or common symbols)
+    const nonASCIIRegex = /[^\x00-\x7F]/;
+    
+    scene.traverse((child) => {
+      console.log('child.name :>> ', child.name);
+      if (child.name && nonASCIIRegex.test(child.name)) {
+        results.push({
+          type: 'warning',
+          message: 'Non-ASCII characters in object name',
+          details: `Object "${child.name}" contains non-ASCII characters. Consider using ASCII names for better USD compatibility.`
+        });
+      }
+      
+      // Check for material names if it's a mesh
+      if (child instanceof THREE.Mesh && child.material) {
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.forEach((material) => {
+          if (material.name && nonASCIIRegex.test(material.name)) {
+            results.push({
+              type: 'warning',
+              message: 'Non-ASCII characters in material name',
+              details: `Material "${material.name}" contains non-ASCII characters. Consider using ASCII names for better USD compatibility.`
+            });
+          }
+        });
+      }
+    });
+  };
+
+  const validateUniqueIds = (gltf: { parser?: { json?: { nodes?: { name?: string }[], materials?: { name?: string }[], meshes?: { name?: string }[] } } }, results: ValidationResult[]) => {
+    const nodeNames = new Set<string>();
+    const materialNames = new Set<string>();
+    const meshNames = new Set<string>();
+    const duplicateNodes: string[] = [];
+    const duplicateMaterials: string[] = [];
+    const duplicateMeshes: string[] = [];
+
+    // Check node names
+    if (gltf.parser?.json?.nodes) {
+      gltf.parser.json.nodes.forEach((node: { name?: string }, index: number) => {
+        const name = node.name || `Node_${index}`;
+        if (nodeNames.has(name)) {
+          duplicateNodes.push(name);
+        } else {
+          nodeNames.add(name);
+        }
+      });
+    }
+
+    // Check material names
+    if (gltf.parser?.json?.materials) {
+      gltf.parser.json.materials.forEach((material: { name?: string }, index: number) => {
+        const name = material.name || `Material_${index}`;
+        if (materialNames.has(name)) {
+          duplicateMaterials.push(name);
+        } else {
+          materialNames.add(name);
+        }
+      });
+    }
+
+    // Check mesh names
+    if (gltf.parser?.json?.meshes) {
+      gltf.parser.json.meshes.forEach((mesh: { name?: string }, index: number) => {
+        const name = mesh.name || `Mesh_${index}`;
+        if (meshNames.has(name)) {
+          duplicateMeshes.push(name);
+        } else {
+          meshNames.add(name);
+        }
+      });
+    }
+
+    // Report duplicate names
+    if (duplicateNodes.length > 0) {
+      results.push({
+        type: 'warning',
+        message: 'Duplicate node names detected',
+        details: `Non-unique node names found: ${duplicateNodes.join(', ')}. This may cause issues in USD workflows.`
+      });
+    }
+
+    if (duplicateMaterials.length > 0) {
+      results.push({
+        type: 'warning',
+        message: 'Duplicate material names detected',
+        details: `Non-unique material names found: ${duplicateMaterials.join(', ')}. This may cause issues in USD workflows.`
+      });
+    }
+
+    if (duplicateMeshes.length > 0) {
+      results.push({
+        type: 'warning',
+        message: 'Duplicate mesh names detected',
+        details: `Non-unique mesh names found: ${duplicateMeshes.join(', ')}. This may cause issues in USD workflows.`
+      });
+    }
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
