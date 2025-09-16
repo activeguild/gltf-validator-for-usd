@@ -35,9 +35,12 @@ export default function ValidationModal({ isOpen, onClose, results }: Validation
 
   if (!isOpen) return null;
 
-  const errorCount = results.filter(r => r.type === 'error').length;
-  const warningCount = results.filter(r => r.type === 'warning').length;
-  const infoCount = results.filter(r => r.type === 'info').length;
+  const filteredResults = results.filter(r => 
+    !(r.type === 'info' && r.message === 'Polygon count check')
+  );
+  const errorCount = filteredResults.filter(r => r.type === 'error').length;
+  const warningCount = filteredResults.filter(r => r.type === 'warning').length;
+  const infoCount = filteredResults.filter(r => r.type === 'info').length;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -98,7 +101,7 @@ export default function ValidationModal({ isOpen, onClose, results }: Validation
           {/* Content */}
           <div className="p-6 max-h-[60vh] overflow-y-auto">
             <div className="space-y-4">
-              {results.map((result, index) => (
+              {filteredResults.map((result, index) => (
                 <div
                   key={index}
                   className={`p-4 rounded-md border-l-4 ${

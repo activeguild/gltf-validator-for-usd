@@ -20,6 +20,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
   const [results, setResults] = useState<ValidationResult[]>([]);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [polygonCount, setPolygonCount] = useState<number | null>(null);
 
   const validateGLTF = async (file: File) => {
     setIsValidating(true);
@@ -37,7 +38,8 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         const animations = gltf.animations;
 
         validateTextures(scene, validationResults);
-        validatePolygonCount(scene, validationResults);
+        const totalPolygons = validatePolygonCount(scene, validationResults);
+        setPolygonCount(totalPolygons);
         validateScaleValues(scene, validationResults);
         validateNormals(scene, validationResults);
         validateAnimations(animations, scene, validationResults);
@@ -111,7 +113,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
     });
   };
 
-  const validatePolygonCount = (scene: THREE.Object3D, results: ValidationResult[]) => {
+  const validatePolygonCount = (scene: THREE.Object3D, results: ValidationResult[]): number => {
     let totalPolygons = 0;
     
     scene.traverse((child) => {
@@ -130,13 +132,9 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         message: 'Polygon count too high',
         details: `Current polygon count: ${Math.round(totalPolygons).toLocaleString()}. Recommend reducing to under 50,000 for better performance.`
       });
-    } else {
-      results.push({
-        type: 'info',
-        message: 'Polygon count check',
-        details: `Total polygons: ${Math.round(totalPolygons).toLocaleString()}`
-      });
     }
+    
+    return Math.round(totalPolygons);
   };
 
   const validateScaleValues = (scene: THREE.Object3D, results: ValidationResult[]) => {
@@ -365,6 +363,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         validateGLTF(file);
       } else {
         setUploadedFile(null);
+        setPolygonCount(null);
         setResults([{
           type: 'error',
           message: 'Unsupported file format',
@@ -480,6 +479,14 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
           // Full screen 3D Viewer
           <div className="h-full">
             <GLTFViewer file={uploadedFile} className="w-full h-full" />
+            
+            {/* Polygon Count Display */}
+            {polygonCount !== null && (
+              <div className="absolute top-20 left-4 bg-black bg-opacity-75 text-white text-sm rounded-lg p-3">
+                <div className="font-medium">📊 Polygon Count</div>
+                <div className="text-lg font-bold mt-1">{polygonCount.toLocaleString()}</div>
+              </div>
+            )}
             
             {/* Floating Controls Info */}
             <div className="absolute bottom-4 left-4 bg-black bg-opacity-75 text-white text-xs rounded-lg p-3 max-w-xs">
