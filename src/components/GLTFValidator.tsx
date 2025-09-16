@@ -41,7 +41,6 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         const totalPolygons = validatePolygonCount(scene, validationResults);
         setPolygonCount(totalPolygons);
         validateScaleValues(scene, validationResults);
-        validateNormals(scene, validationResults);
         validateAnimations(animations, scene, validationResults);
         validateMeshHierarchy(scene, validationResults);
         validateObjectNames(scene, validationResults);
@@ -145,68 +144,6 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
           message: 'Negative scale values detected',
           details: `Object "${child.name || 'Unnamed'}" has negative scale values. This may cause object distortion.`
         });
-      }
-    });
-  };
-
-  const validateNormals = (scene: THREE.Object3D, results: ValidationResult[]) => {
-    scene.traverse((child) => {
-      if (child instanceof THREE.Mesh && child.geometry) {
-        const normals = child.geometry.attributes.normal;
-        if (normals) {
-          const normalArray = normals.array;
-          let hasInvalidNormals = false;
-          let hasNegativeNormals = false;
-          let invalidCount = 0;
-          
-          for (let i = 0; i < normalArray.length; i += 3) {
-            const x = normalArray[i];
-            const y = normalArray[i + 1];
-            const z = normalArray[i + 2];
-            
-            // Check for invalid normals (NaN, Infinity, or zero-length vectors)
-            if (isNaN(x) || isNaN(y) || isNaN(z) || 
-                !isFinite(x) || !isFinite(y) || !isFinite(z)) {
-              hasInvalidNormals = true;
-              invalidCount++;
-            } else {
-              // Check if normal vector has zero length (which would be invalid)
-              const length = Math.sqrt(x * x + y * y + z * z);
-              if (length < 0.0001) { // Very small threshold for zero-length
-                hasInvalidNormals = true;
-                invalidCount++;
-              }
-              
-              // Check for negative values in normal components (problematic for USDZ conversion)
-              if (x < 0 || y < 0 || z < 0) {
-                hasNegativeNormals = true;
-              }
-            }
-          }
-          
-          if (hasInvalidNormals) {
-            results.push({
-              type: 'warning',
-              message: 'Invalid normal vectors detected',
-              details: `Mesh "${child.name || 'Unnamed'}" has ${invalidCount} invalid normal vectors (NaN, infinite, or zero-length). This may cause rendering issues.`
-            });
-          }
-          
-          if (hasNegativeNormals) {
-            results.push({
-              type: 'warning',
-              message: 'Negative normal vector components detected',
-              details: `Mesh "${child.name || 'Unnamed'}" has normal vectors with negative components.`
-            });
-          }
-        } else {
-          // Missing normals might be an issue for some USD workflows
-          results.push({
-            type: 'info',
-            message: 'Missing normal vectors',
-            details: `Mesh "${child.name || 'Unnamed'}" does not have normal vectors. Consider adding them for better USD compatibility.`
-          });
-        }
       }
     });
   };
