@@ -334,7 +334,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
           <span className="font-medium">Warnings Found</span>
         </div>
       );
-    } else if (results.length > 0) {
+    } else if (results.length === 0) {
       return (
         <div className="flex items-center space-x-2 text-green-600">
           <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 20 20">
