@@ -1,15 +1,16 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 interface GLTFViewerProps {
   file: File | null;
   className?: string;
+  showNegativeFaces?: boolean;
 }
 
-export default function GLTFViewer({ file, className = '' }: GLTFViewerProps) {
+export default function GLTFViewer({ file, className = '', showNegativeFaces = false }: GLTFViewerProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -17,6 +18,8 @@ export default function GLTFViewer({ file, className = '' }: GLTFViewerProps) {
   const controlsRef = useRef<OrbitControls | null>(null);
   const animationIdRef = useRef<number | null>(null);
   const [isClient, setIsClient] = useState(false);
+  const loadedModelRef = useRef<THREE.Group | null>(null);
+  const originalMaterialsRef = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
 
   useEffect(() => {
     setIsClient(true);
@@ -48,16 +51,31 @@ export default function GLTFViewer({ file, className = '' }: GLTFViewerProps) {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     rendererRef.current = renderer;
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+    // Lighting - 非常に明るく設定
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
     directionalLight.position.set(10, 10, 5);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
+    directionalLight.castShadow = false;
     scene.add(directionalLight);
+
+    // 全方向からライトを当てる
+    const directionalLight2 = new THREE.DirectionalLight(0xffffff, 1.0);
+    directionalLight2.position.set(-10, -10, -5);
+    scene.add(directionalLight2);
+
+    const directionalLight3 = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight3.position.set(0, 10, -10);
+    scene.add(directionalLight3);
+
+    const directionalLight4 = new THREE.DirectionalLight(0xffffff, 0.6);
+    directionalLight4.position.set(5, -10, 10);
+    scene.add(directionalLight4);
+
+    const directionalLight5 = new THREE.DirectionalLight(0xffffff, 0.6);
+    directionalLight5.position.set(-5, 5, -10);
+    scene.add(directionalLight5);
 
     // Grid
     const gridHelper = new THREE.GridHelper(10, 10);
@@ -233,7 +251,15 @@ export default function GLTFViewer({ file, className = '' }: GLTFViewerProps) {
           });
           
           sceneRef.current!.add(model);
+          loadedModelRef.current = model;
           console.log('Model added to scene');
+          
+          // 元のマテリアルを保存
+          model.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              originalMaterialsRef.current.set(child, child.material);
+            }
+          });
 
           // Adjust camera to view the model
           if (cameraRef.current && controlsRef.current) {
@@ -308,6 +334,113 @@ export default function GLTFViewer({ file, className = '' }: GLTFViewerProps) {
 
     loadGLTF();
   }, [file, isClient]);
+
+
+  // Create face orientation shader material (Blender-style)
+  const createFaceOrientationMaterial = useCallback(() => {
+    const vertexShader = `
+      varying vec3 vNormalView;
+      
+      void main() {
+        // 法線をビュー座標系に変換（vertex shaderで行う）
+        vNormalView = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+    
+    const fragmentShader = `
+      varying vec3 vNormalView;
+      
+      void main() {
+        // 法線は既にビュー座標系に変換済み
+        vec3 normal = normalize(vNormalView);
+        
+        // カメラ方向（ビュー空間では常に (0,0,1)）
+        vec3 viewDir = vec3(0.0, 0.0, 1.0);
+        
+        // 内積が負なら裏向き
+        float facing = dot(normal, viewDir);
+        
+        if (facing > 0.0) {
+          gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0); // 表 = 青
+        } else {
+          gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); // 裏 = 赤
+        }
+      }
+    `;
+    
+    return new THREE.ShaderMaterial({
+      vertexShader,
+      fragmentShader,
+      side: THREE.DoubleSide, // 両面を表示
+    });
+  }, []);
+
+  // Apply face orientation shader to all meshes
+  const detectNegativeFaces = useCallback((object: THREE.Object3D): THREE.Mesh[] => {
+    const allMeshes: THREE.Mesh[] = [];
+    
+    console.log('=== APPLYING BLENDER-STYLE FACE ORIENTATION SHADER ===');
+    
+    object.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.geometry) {
+        allMeshes.push(child);
+        const meshName = child.name || 'Unnamed';
+        console.log(`Found mesh: "${meshName}"`);
+      }
+    });
+    
+    console.log(`=== Found ${allMeshes.length} meshes for face orientation ===`);
+    return allMeshes; // Return all meshes to apply shader
+  }, []);
+
+  // チェックボックスの状態に応じてface orientationシェーダーを適用
+  useEffect(() => {
+    console.log(`=== useEffect triggered: showNegativeFaces=${showNegativeFaces} ===`);
+    
+    if (!loadedModelRef.current) {
+      console.log('No loaded model, returning');
+      return;
+    }
+
+    const allMeshes = detectNegativeFaces(loadedModelRef.current);
+    console.log(`Found ${allMeshes.length} meshes for face orientation`);
+    
+    let processedMeshes = 0;
+    loadedModelRef.current.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        processedMeshes++;
+        console.log(`Processing mesh ${processedMeshes}: "${child.name || 'Unnamed'}"`);
+        
+        if (showNegativeFaces) {
+          // face orientationシェーダーを適用
+          if (!originalMaterialsRef.current.has(child)) {
+            console.log(`Saving original material for mesh: ${child.name || 'Unnamed'}`);
+            originalMaterialsRef.current.set(child, child.material);
+          }
+          
+          const faceOrientationMaterial = createFaceOrientationMaterial();
+          child.material = faceOrientationMaterial;
+          console.log(`✓ Applied face orientation shader to mesh: ${child.name || 'Unnamed'}`);
+        } else {
+          // 元のマテリアルに戻す
+          const originalMaterial = originalMaterialsRef.current.get(child);
+          if (originalMaterial) {
+            child.material = originalMaterial;
+            console.log(`✓ Restored original material for mesh: ${child.name || 'Unnamed'}`);
+          }
+        }
+      }
+    });
+    
+    console.log(`Processed ${processedMeshes} total meshes`);
+
+    // 再レンダリング
+    if (rendererRef.current && sceneRef.current && cameraRef.current) {
+      rendererRef.current.render(sceneRef.current, cameraRef.current);
+      console.log('✓ Scene re-rendered');
+    }
+  }, [showNegativeFaces, detectNegativeFaces, createFaceOrientationMaterial]);
 
   return (
     <div className={`relative bg-gray-100 rounded-lg overflow-hidden border-2 border-gray-200 ${className}`}>
