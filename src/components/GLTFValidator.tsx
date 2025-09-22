@@ -432,19 +432,21 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
             
             {/* Face Direction Check */}
             {uploadedFile && !isValidating && (
-              <div className="absolute top-20 right-4 bg-black bg-opacity-75 text-white text-sm rounded-lg p-3">
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showNegativeFaces}
-                    onChange={(e) => setShowNegativeFaces(e.target.checked)}
-                    className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                  />
-                  <span className="font-medium">Face Orientation Check</span>
+              <div className="absolute top-20 right-4 bg-black bg-opacity-75 text-white text-sm rounded-lg p-3 max-w-xs">
+                <label className="cursor-pointer">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={showNegativeFaces}
+                      onChange={(e) => setShowNegativeFaces(e.target.checked)}
+                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                    />
+                    <span className="font-medium">Face Orientation Check</span>
+                  </div>
+                  <div className="text-xs text-gray-300 mt-1 leading-relaxed">
+                    Highlight negative faces in red. Note: Red highlighted areas may appear transparent in some cases.
+                  </div>
                 </label>
-                <div className="text-xs text-gray-300 mt-1">
-                  Highlight negative faces in red
-                </div>
               </div>
             )}
             
