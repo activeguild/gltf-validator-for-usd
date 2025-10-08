@@ -192,7 +192,15 @@ export default function GLTFViewer({ file, className = '', showNegativeFaces = f
       try {
         console.log('Loading GLTF file:', file.name);
         const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+        const { DRACOLoader } = await import('three/examples/jsm/loaders/DRACOLoader.js');
+
         const loader = new GLTFLoader();
+
+        // DRACOLoaderの設定
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+        loader.setDRACOLoader(dracoLoader);
+
         const arrayBuffer = await file.arrayBuffer();
 
         // Clear existing models

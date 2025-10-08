@@ -29,10 +29,17 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      
-      // 動的インポートでGLTFLoaderを読み込み
+
+      // 動的インポートでGLTFLoaderとDracoLoaderを読み込み
       const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+      const { DRACOLoader } = await import('three/examples/jsm/loaders/DRACOLoader.js');
+
       const loader = new GLTFLoader();
+
+      // DRACOLoaderの設定
+      const dracoLoader = new DRACOLoader();
+      dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+      loader.setDRACOLoader(dracoLoader);
 
       loader.parse(arrayBuffer, '', (gltf) => {
         const scene = gltf.scene;
@@ -196,7 +203,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
   const validateObjectNames = (scene: THREE.Object3D, results: ValidationResult[]) => {
     // Regex to detect non-ASCII characters (anything that's not alphanumeric or common symbols)
     const nonASCIIRegex = /[^\x00-\x7F]/;
-    
+
     scene.traverse((child) => {
       console.log('child.name :>> ', child.name);
       if (child.name && nonASCIIRegex.test(child.name)) {
@@ -206,7 +213,17 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
           details: `Object "${child.name}" contains non-ASCII characters. Consider using ASCII names for better USD compatibility.`
         });
       }
-      
+
+      console.log('child.name  :>> ', child.name );
+      // Check for spaces in object names
+      if (child.name && child.name.includes(' ')) {
+        results.push({
+          type: 'warning',
+          message: 'Space character in object name',
+          details: `Object "${child.name}" contains spaces. Consider using underscores or camelCase for better USD compatibility.`
+        });
+      }
+
       // Check for material names if it's a mesh
       if (child instanceof THREE.Mesh && child.material) {
         const materials = Array.isArray(child.material) ? child.material : [child.material];
@@ -216,6 +233,79 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
               type: 'warning',
               message: 'Non-ASCII characters in material name',
               details: `Material "${material.name}" contains non-ASCII characters. Consider using ASCII names for better USD compatibility.`
+            });
+          }
+
+          // Check for spaces in material names
+          if (material.name && material.name.includes(' ')) {
+            results.push({
+              type: 'warning',
+              message: 'Space character in material name',
+              details: `Material "${material.name}" contains spaces. Consider using underscores or camelCase for better USD compatibility.`
+            });
+          }
+
+          // Check texture file names
+          if (material instanceof THREE.MeshStandardMaterial) {
+            const textures = [
+              { texture: material.map, type: 'map' },
+              { texture: material.normalMap, type: 'normalMap' },
+              { texture: material.roughnessMap, type: 'roughnessMap' },
+              { texture: material.metalnessMap, type: 'metalnessMap' },
+              { texture: material.emissiveMap, type: 'emissiveMap' },
+              { texture: material.aoMap, type: 'aoMap' }
+            ];
+
+            textures.forEach(({ texture, type }) => {
+              if (texture) {
+                console.log('texture :>> ', type, texture);
+                console.log('texture.name :>> ', texture.name);
+                console.log('texture.image :>> ', texture.image);
+                if (texture.image) {
+                  console.log('texture.image.src :>> ', texture.image.src);
+                }
+
+                // Check texture.name (from GLTF images[].name)
+                if (texture.name) {
+                  if (nonASCIIRegex.test(texture.name)) {
+                    results.push({
+                      type: 'warning',
+                      message: 'Non-ASCII characters in texture name',
+                      details: `Texture "${texture.name}" (${type}) contains non-ASCII characters. Consider using ASCII names for better USD compatibility.`
+                    });
+                  }
+
+                  if (texture.name.includes(' ')) {
+                    results.push({
+                      type: 'warning',
+                      message: 'Space character in texture name',
+                      details: `Texture "${texture.name}" (${type}) contains spaces. Consider using underscores or camelCase for better USD compatibility.`
+                    });
+                  }
+                }
+
+                // Check filename from src (from GLTF images[].uri)
+                if (texture.image && texture.image.src) {
+                  const src = texture.image.src;
+                  const filename = src.split('/').pop()?.split('?')[0] || src;
+
+                  if (nonASCIIRegex.test(filename)) {
+                    results.push({
+                      type: 'warning',
+                      message: 'Non-ASCII characters in texture filename',
+                      details: `Texture file "${filename}" (${type}) contains non-ASCII characters. Consider using ASCII names for better USD compatibility.`
+                    });
+                  }
+
+                  if (filename.includes(' ')) {
+                    results.push({
+                      type: 'warning',
+                      message: 'Space character in texture filename',
+                      details: `Texture file "${filename}" (${type}) contains spaces. Consider using underscores or camelCase for better USD compatibility.`
+                    });
+                  }
+                }
+              }
             });
           }
         });
