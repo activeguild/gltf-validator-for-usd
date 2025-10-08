@@ -19,16 +19,27 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
   const [isValidating, setIsValidating] = useState(false);
   const [results, setResults] = useState<ValidationResult[]>([]);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<FileList | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [polygonCount, setPolygonCount] = useState<number | null>(null);
   const [showNegativeFaces, setShowNegativeFaces] = useState(false);
 
-  const validateGLTF = async (file: File) => {
+  const validateGLTF = async (file: File, supportFiles?: FileList) => {
     setIsValidating(true);
     const validationResults: ValidationResult[] = [];
 
     try {
       const arrayBuffer = await file.arrayBuffer();
+
+      // サポートファイル（bin、画像など）をマップ化
+      const fileMap = new Map<string, string>();
+      if (supportFiles) {
+        for (let i = 0; i < supportFiles.length; i++) {
+          const supportFile = supportFiles[i];
+          const url = URL.createObjectURL(supportFile);
+          fileMap.set(supportFile.name, url);
+        }
+      }
 
       // 動的インポートでGLTFLoaderとDracoLoaderを読み込み
       const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
@@ -40,6 +51,17 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
       const dracoLoader = new DRACOLoader();
       dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
       loader.setDRACOLoader(dracoLoader);
+
+      // LoadingManagerを使用して外部ファイルの読み込みを解決
+      const manager = new THREE.LoadingManager();
+      manager.setURLModifier((url) => {
+        const filename = url.split('/').pop() || url;
+        if (fileMap.has(filename)) {
+          return fileMap.get(filename)!;
+        }
+        return url;
+      });
+      loader.manager = manager;
 
       loader.parse(arrayBuffer, '', (gltf) => {
         const scene = gltf.scene;
@@ -384,21 +406,33 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    // GLTFまたはGLBファイルを探す
+    let gltfFile: File | null = null;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       if (file.name.toLowerCase().endsWith('.gltf') || file.name.toLowerCase().endsWith('.glb')) {
-        setUploadedFile(file);
-        validateGLTF(file);
-      } else {
-        setUploadedFile(null);
-        setPolygonCount(null);
-        setResults([{
-          type: 'error',
-          message: 'Unsupported file format',
-          details: 'Please upload a GLTF (.gltf) or GLB (.glb) file.'
-        }]);
-        setIsModalOpen(true);
+        gltfFile = file;
+        break;
       }
+    }
+
+    if (gltfFile) {
+      setUploadedFile(gltfFile);
+      setUploadedFiles(files);
+      validateGLTF(gltfFile, files);
+    } else {
+      setUploadedFile(null);
+      setUploadedFiles(null);
+      setPolygonCount(null);
+      setResults([{
+        type: 'error',
+        message: 'Unsupported file format',
+        details: 'Please upload a GLTF (.gltf) or GLB (.glb) file.'
+      }]);
+      setIsModalOpen(true);
     }
   };
 
@@ -469,9 +503,10 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
                 name="file-upload"
                 type="file"
                 className="sr-only"
-                accept=".gltf,.glb"
+                accept=".gltf,.glb,.bin,.png,.jpg,.jpeg,.webp"
                 onChange={handleFileUpload}
                 disabled={isValidating}
+                multiple
               />
             </label>
             
@@ -506,9 +541,10 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         {uploadedFile ? (
           // Full screen 3D Viewer
           <div className="h-full">
-            <GLTFViewer 
-              file={uploadedFile} 
-              className="w-full h-full" 
+            <GLTFViewer
+              file={uploadedFile}
+              supportFiles={uploadedFiles}
+              className="w-full h-full"
               showNegativeFaces={showNegativeFaces}
             />
             
@@ -588,13 +624,14 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
                   name="file-upload-main"
                   type="file"
                   className="sr-only"
-                  accept=".gltf,.glb"
+                  accept=".gltf,.glb,.bin,.png,.jpg,.jpeg,.webp"
                   onChange={handleFileUpload}
                   disabled={isValidating}
+                  multiple
                 />
               </label>
               <p className="text-xs text-gray-500 mt-4">
-                Supported formats: .gltf, .glb
+                Supported formats: .gltf, .glb (+ .bin, .png, .jpg, .webp)
               </p>
             </div>
           </div>

@@ -6,11 +6,12 @@ import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js
 
 interface GLTFViewerProps {
   file: File | null;
+  supportFiles?: FileList | null;
   className?: string;
   showNegativeFaces?: boolean;
 }
 
-export default function GLTFViewer({ file, className = '', showNegativeFaces = false }: GLTFViewerProps) {
+export default function GLTFViewer({ file, supportFiles, className = '', showNegativeFaces = false }: GLTFViewerProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -191,6 +192,18 @@ export default function GLTFViewer({ file, className = '', showNegativeFaces = f
     const loadGLTF = async () => {
       try {
         console.log('Loading GLTF file:', file.name);
+
+        // サポートファイル（bin、画像など）をマップ化
+        const fileMap = new Map<string, string>();
+        if (supportFiles) {
+          for (let i = 0; i < supportFiles.length; i++) {
+            const supportFile = supportFiles[i];
+            const url = URL.createObjectURL(supportFile);
+            fileMap.set(supportFile.name, url);
+            console.log('Support file:', supportFile.name, url);
+          }
+        }
+
         const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
         const { DRACOLoader } = await import('three/examples/jsm/loaders/DRACOLoader.js');
 
@@ -200,6 +213,18 @@ export default function GLTFViewer({ file, className = '', showNegativeFaces = f
         const dracoLoader = new DRACOLoader();
         dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
         loader.setDRACOLoader(dracoLoader);
+
+        // LoadingManagerを使用して外部ファイルの読み込みを解決
+        const manager = new THREE.LoadingManager();
+        manager.setURLModifier((url) => {
+          const filename = url.split('/').pop() || url;
+          if (fileMap.has(filename)) {
+            console.log('URL modifier: replacing', url, 'with', fileMap.get(filename));
+            return fileMap.get(filename)!;
+          }
+          return url;
+        });
+        loader.manager = manager;
 
         const arrayBuffer = await file.arrayBuffer();
 
@@ -341,7 +366,7 @@ export default function GLTFViewer({ file, className = '', showNegativeFaces = f
     };
 
     loadGLTF();
-  }, [file, isClient]);
+  }, [file, supportFiles, isClient]);
 
 
   // Create face orientation shader material (Blender-style)
