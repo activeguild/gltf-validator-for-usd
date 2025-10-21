@@ -75,6 +75,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         validateMeshHierarchy(scene, validationResults);
         validateObjectNames(scene, validationResults);
         validateUniqueIds(gltf, validationResults);
+        validateBoneStructure(scene, animations, validationResults);
 
         setResults(validationResults);
         onValidationComplete?.(validationResults);
@@ -333,6 +334,74 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         });
       }
     });
+  };
+
+  const validateBoneStructure = (scene: THREE.Object3D, animations: THREE.AnimationClip[], results: ValidationResult[]) => {
+    // Check if there are any animations
+    if (!animations || animations.length === 0) {
+      // No animations, skip bone validation
+      return;
+    }
+
+    // Check if any animation targets bones
+    let hasBoneAnimation = false;
+    for (const clip of animations) {
+      for (const track of clip.tracks) {
+        // Check if the track targets a bone (bone names typically appear in track names)
+        // Track names are in format: "boneName.property"
+        const trackTargetPath = track.name.split('.')[0];
+
+        // Verify if this target corresponds to an actual bone in the scene
+        scene.traverse((child) => {
+          if (child instanceof THREE.Bone && (child.name === trackTargetPath || child.uuid === trackTargetPath)) {
+            hasBoneAnimation = true;
+          }
+        });
+
+        if (hasBoneAnimation) break;
+      }
+      if (hasBoneAnimation) break;
+    }
+
+    if (!hasBoneAnimation) {
+      // No bone animations found, skip validation
+      return;
+    }
+
+    const bones: THREE.Bone[] = [];
+
+    // Collect all bones in the scene
+    scene.traverse((child) => {
+      if (child instanceof THREE.Bone) {
+        bones.push(child);
+      }
+    });
+
+    if (bones.length === 0) {
+      // No bones found, skip validation
+      return;
+    }
+
+    // Find root bones (bones that don't have a bone parent)
+    const rootBones = bones.filter((bone) => {
+      let parent = bone.parent;
+      while (parent) {
+        if (parent instanceof THREE.Bone) {
+          return false; // This bone has a bone parent
+        }
+        parent = parent.parent;
+      }
+      return true; // This bone has no bone parent, it's a root
+    });
+
+    if (rootBones.length > 1) {
+      const rootBoneNames = rootBones.map(bone => bone.name || 'Unnamed').join(', ');
+      results.push({
+        type: 'warning',
+        message: 'Multiple bone roots detected',
+        details: `Found ${rootBones.length} root bones: ${rootBoneNames}. Multiple bone roots may cause animation to break when converting to USD. Consider using a single root bone for better compatibility.`
+      });
+    }
   };
 
   const validateUniqueIds = (gltf: { parser?: { json?: { nodes?: { name?: string }[], materials?: { name?: string }[], meshes?: { name?: string }[] } } }, results: ValidationResult[]) => {
