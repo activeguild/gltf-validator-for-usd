@@ -114,7 +114,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
 
   const validateTextures = (scene: THREE.Object3D, results: ValidationResult[]) => {
     const textures = new Set<THREE.Texture>();
-    
+
     scene.traverse((child) => {
       if (child instanceof THREE.Mesh && child.material) {
         const materials = Array.isArray(child.material) ? child.material : [child.material];
@@ -130,14 +130,30 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
     });
 
     textures.forEach((texture) => {
-      if (texture.image && texture.image.src) {
-        const src = texture.image.src.toLowerCase();
-        if (src.includes('.jpg') || src.includes('.jpeg') || src.includes('.png')) {
+      if (texture.image) {
+        // Check texture size
+        const width = texture.image.width;
+        const height = texture.image.height;
+
+        if (width >= 2001 || height >= 2001) {
+          const textureName = texture.name || 'Unnamed texture';
           results.push({
             type: 'warning',
-            message: 'Texture format optimization recommended',
-            details: `Converting JPEG/PNG textures to WebP format can reduce file size significantly.`
+            message: 'Texture size too large',
+            details: `Texture "${textureName}" has dimensions ${width}x${height}px. Textures larger than 2000px may cause performance issues. Consider reducing the texture size.`
           });
+        }
+
+        // Check texture format
+        if (texture.image.src) {
+          const src = texture.image.src.toLowerCase();
+          if (src.includes('.jpg') || src.includes('.jpeg') || src.includes('.png')) {
+            results.push({
+              type: 'warning',
+              message: 'Texture format optimization recommended',
+              details: `Converting JPEG/PNG textures to WebP format can reduce file size significantly.`
+            });
+          }
         }
       }
     });
