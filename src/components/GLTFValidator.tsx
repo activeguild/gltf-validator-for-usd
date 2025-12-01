@@ -22,6 +22,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
   const [uploadedFiles, setUploadedFiles] = useState<FileList | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [polygonCount, setPolygonCount] = useState<number | null>(null);
+  const [meshCount, setMeshCount] = useState<number | null>(null);
   const [showNegativeFaces, setShowNegativeFaces] = useState(false);
 
   const validateGLTF = async (file: File, supportFiles?: FileList) => {
@@ -70,6 +71,8 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         validateTextures(scene, validationResults);
         const totalPolygons = validatePolygonCount(scene, validationResults);
         setPolygonCount(totalPolygons);
+        const totalMeshes = validateMeshCount(scene, validationResults);
+        setMeshCount(totalMeshes);
         validateScaleValues(scene, validationResults);
         validateAnimations(animations, scene, validationResults);
         validateMeshHierarchy(scene, validationResults);
@@ -161,7 +164,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
 
   const validatePolygonCount = (scene: THREE.Object3D, results: ValidationResult[]): number => {
     let totalPolygons = 0;
-    
+
     scene.traverse((child) => {
       if (child instanceof THREE.Mesh && child.geometry) {
         const geometry = child.geometry;
@@ -179,8 +182,28 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
         details: `Current polygon count: ${Math.round(totalPolygons).toLocaleString()}. Recommend reducing to under 50,000 for better performance.`
       });
     }
-    
+
     return Math.round(totalPolygons);
+  };
+
+  const validateMeshCount = (scene: THREE.Object3D, results: ValidationResult[]): number => {
+    let meshCount = 0;
+
+    scene.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        meshCount++;
+      }
+    });
+
+    if (meshCount >= 51) {
+      results.push({
+        type: 'warning',
+        message: 'Mesh count too high',
+        details: `Current mesh count: ${meshCount}. Having 51 or more meshes may impact performance. Consider combining meshes where possible.`
+      });
+    }
+
+    return meshCount;
   };
 
   const validateScaleValues = (scene: THREE.Object3D, results: ValidationResult[]) => {
@@ -512,6 +535,7 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
       setUploadedFile(null);
       setUploadedFiles(null);
       setPolygonCount(null);
+      setMeshCount(null);
       setResults([{
         type: 'error',
         message: 'Unsupported file format',
@@ -633,11 +657,21 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
               showNegativeFaces={showNegativeFaces}
             />
             
-            {/* Polygon Count Display */}
-            {polygonCount !== null && (
+            {/* Polygon and Mesh Count Display */}
+            {(polygonCount !== null || meshCount !== null) && (
               <div className="absolute top-20 left-4 bg-black bg-opacity-75 text-white text-sm rounded-lg p-3">
-                <div className="font-medium">📊 Polygon Count</div>
-                <div className="text-lg font-bold mt-1">{polygonCount.toLocaleString()}</div>
+                {polygonCount !== null && (
+                  <>
+                    <div className="font-medium">📊 Polygon Count</div>
+                    <div className="text-lg font-bold mt-1">{polygonCount.toLocaleString()}</div>
+                  </>
+                )}
+                {meshCount !== null && (
+                  <>
+                    <div className="font-medium mt-3">🔷 Mesh Count</div>
+                    <div className="text-lg font-bold mt-1">{meshCount.toLocaleString()}</div>
+                  </>
+                )}
               </div>
             )}
             
