@@ -239,27 +239,35 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
   };
 
   const validateMeshHierarchy = (scene: THREE.Object3D, results: ValidationResult[]) => {
-    const checkDepth = (object: THREE.Object3D, depth: number = 0): number => {
-      let maxDepth = depth;
-      object.children.forEach((child) => {
-        const childDepth = checkDepth(child, depth + 1);
-        maxDepth = Math.max(maxDepth, childDepth);
-      });
-      return maxDepth;
+    const getDepthFromScene = (object: THREE.Object3D, sceneRoot: THREE.Object3D): number => {
+      let depth = 0;
+      let current = object;
+      while (current !== null && current !== sceneRoot) {
+        depth++;
+        current = current.parent as THREE.Object3D;
+      }
+      return depth;
     };
+
+    console.log('=== validateMeshHierarchy started ===');
+    let meshCount = 0;
 
     scene.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        const depth = checkDepth(child);
-        if (depth > 5) {
+        meshCount++;
+        const depth = getDepthFromScene(child, scene);
+
+        if (depth >= 3) {
           results.push({
             type: 'warning',
             message: 'Deep mesh hierarchy detected',
-            details: `Mesh "${child.name || 'Unnamed'}" is in deep hierarchy (${depth} levels). This may impact performance.`
+            details: `Mesh "${child.name || 'Unnamed'}" is nested ${depth} levels deep in the hierarchy. Deep nesting may impact performance and complicate USD conversion.`
           });
         }
       }
     });
+
+    console.log(`=== Total meshes found: ${meshCount} ===`);
   };
 
   const validateObjectNames = (scene: THREE.Object3D, results: ValidationResult[]) => {
