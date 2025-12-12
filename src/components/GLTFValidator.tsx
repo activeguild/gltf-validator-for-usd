@@ -163,27 +163,35 @@ export default function GLTFValidator({ onValidationComplete }: GLTFValidatorPro
   };
 
   const validatePolygonCount = (scene: THREE.Object3D, results: ValidationResult[]): number => {
-    let totalPolygons = 0;
+    let totalTriangles = 0;
 
     scene.traverse((child) => {
       if (child instanceof THREE.Mesh && child.geometry) {
         const geometry = child.geometry;
-        const positions = geometry.attributes.position;
-        if (positions) {
-          totalPolygons += positions.count / 3;
+
+        // Count triangles based on index buffer if available, otherwise use vertex count
+        if (geometry.index) {
+          // Indexed geometry: count triangles from index buffer
+          totalTriangles += geometry.index.count / 3;
+        } else {
+          // Non-indexed geometry: count triangles from vertex positions
+          const positions = geometry.attributes.position;
+          if (positions) {
+            totalTriangles += positions.count / 3;
+          }
         }
       }
     });
 
-    if (totalPolygons > 50000) {
+    if (totalTriangles > 50000) {
       results.push({
         type: 'warning',
         message: 'Polygon count too high',
-        details: `Current polygon count: ${Math.round(totalPolygons).toLocaleString()}. Recommend reducing to under 50,000 for better performance.`
+        details: `Current polygon count: ${Math.round(totalTriangles).toLocaleString()}. Recommend reducing to under 50,000 for better performance.`
       });
     }
 
-    return Math.round(totalPolygons);
+    return Math.round(totalTriangles);
   };
 
   const validateMeshCount = (scene: THREE.Object3D, results: ValidationResult[]): number => {
